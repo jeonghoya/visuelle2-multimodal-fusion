@@ -10,11 +10,11 @@ import time
 
 # [Visuelle 2.0 데이터셋]
 from dataset_fusion import Visuelle2 
-# [핵심 수정] M4FT 모델 임포트
+# [핵심] TARG 모델 (Proposed_model_v3.py)
 from models.Proposed_model_v3 import TARG_M4FT_Visuelle2 as MyModel
 
 def run(args):
-    print("=== Training M4FT (Dual-Gated) on Visuelle 2.0 ===")
+    print(f"=== Training TARG (Anchor: {args.query_modality}) on Visuelle 2.0 ===")
     print(args)
 
     # Seed for reproducibility
@@ -45,13 +45,11 @@ def run(args):
     demand = bool(args.demand)
     img_folder = os.path.join(args.dataset_path, 'images')
     
-    # 데이터셋 파일 설정
     if demand:
-        args.output_len = 12 # Demand Task는 12주 고정
+        args.output_len = 12 
         visuelle_pt_train = "visuelle2_train_processed_demand.pt"  
         visuelle_pt_test = "visuelle2_test_processed_demand.pt"  
     else:
-        # 2-1 / 2-10 Task
         visuelle_pt_train = "visuelle2_train_processed_stfore.pt"
         visuelle_pt_test = "visuelle2_test_processed_stfore.pt"
 
@@ -90,8 +88,6 @@ def run(args):
 
 
     ####################################### Model Setup #######################################
-    # [수정] M4FT 모델 초기화
-    # 인자는 GTM과 동일하게 유지 (호환성)
     model = MyModel(
         embedding_dim=args.embedding_dim,
         hidden_dim=args.hidden_dim,
@@ -107,6 +103,8 @@ def run(args):
         trend_len=52,
         num_trends=3,
         gpu_num=args.gpu_num,
+        # [수정] 입력받은 query_modality 인자 전달
+        query_modality=args.query_modality, 
         use_encoder_mask=args.use_encoder_mask,
         autoregressive=args.autoregressive
     )
@@ -115,9 +113,10 @@ def run(args):
     
     dt_string = datetime.now().strftime("%d-%m-%Y-%H-%M-%S")
     
-    # [수정] 체크포인트 파일명 변경 (M4FT)
     task_name = "Demand" if demand else f"SO-{args.output_len}"
-    filename_format = f"Gated_method-{task_name}-epoch={{epoch}}-{dt_string}"
+    
+    # [수정] 저장 파일명에 쿼리 모달리티 정보 포함 (예: TARG-text-Demand-epoch=...)
+    filename_format = f"TARG-{args.query_modality}-{task_name}-epoch={{epoch}}-{dt_string}"
 
     checkpoint_callback = pl.callbacks.ModelCheckpoint(
         dirpath=args.ckpt_dir,
@@ -128,8 +127,10 @@ def run(args):
     )
 
     if args.use_wandb:
+        # WandB 이름에도 쿼리 정보 추가
+        run_name = f"{args.wandb_run}-{args.query_modality}" if args.wandb_run else f"TARG-{args.query_modality}"
         wandb_logger = pl_loggers.WandbLogger(
-            project=args.wandb_project, entity=args.wandb_entity, name=args.wandb_run
+            project=args.wandb_project, entity=args.wandb_entity, name=run_name
         )
 
     trainer = pl.Trainer(
@@ -150,18 +151,23 @@ def run(args):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='M4FT on Visuelle 2.0')
+    parser = argparse.ArgumentParser(description='TARG Fusion on Visuelle 2.0')
     
     # Path & Data
     parser.add_argument("--dataset_path", type=str, default='../visuelle2/')
-    parser.add_argument("--ckpt_dir", type=str, default="ckpt_Gate_v3/") # [수정] 폴더 변경 권장
+    parser.add_argument("--ckpt_dir", type=str, default="ckpt_Gate_v3/")
     parser.add_argument("--seed", type=int, default=21)
     parser.add_argument("--batch_size", type=int, default=128)
     
     # Task Mode 
     parser.add_argument("--demand", type=int, default=1, 
                         help="1=Demand Task(No history), 0=SO-fore(With history)")
-    parser.add_argument("--output_len", type=int, default=12) # Demand=12, SO-fore=1 or 10
+    parser.add_argument("--output_len", type=int, default=12)
+
+    # [수정] Ablation Study를 위한 쿼리 모달리티 선택 인자 추가
+    parser.add_argument("--query_modality", type=str, default='text', 
+                        choices=['text', 'image', 'temporal'],
+                        help="Anchor modality for TARG Fusion (text, image, or temporal)")
 
     # Model Hyperparameters
     parser.add_argument('--embedding_dim', type=int, default=32) 
@@ -187,7 +193,6 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     
-    # Safety Check
     if args.demand:
         args.output_len = 12
 

@@ -242,7 +242,7 @@ class TARGFusionNetwork(nn.Module):
 class TARG_M4FT_Visuelle2(pl.LightningModule):
     def __init__(self, embedding_dim, hidden_dim, output_dim, num_heads, num_layers, use_text, use_img, 
                 cat_dict, col_dict, fab_dict, store_num, trend_len, num_trends, gpu_num, 
-                query_modality='text', # [New] 쿼리 모달리티 선택 인자 추가
+                query_modality='image', # [New] 쿼리 모달리티 선택 인자 추가
                 use_encoder_mask=1, autoregressive=False):
         super().__init__()
         self.hidden_dim = hidden_dim
